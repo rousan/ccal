@@ -20,7 +20,7 @@
 proxies OpenAI-compatible requests to your local
 [`claude`](https://docs.claude.com/claude-code) CLI. It lets any OpenAI-style
 client — an SDK, a chat UI, `curl`, or an app like
-[Warren](https://github.com/rousan) — talk to your Claude **subscription** as if
+[Warren](https://warren.rousanali.com) — talk to your Claude **subscription** as if
 it were a regular model endpoint.
 
 Under the hood it shells out to `claude -p --output-format stream-json ...` and
