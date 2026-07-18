@@ -134,15 +134,18 @@ ccal is published as the scoped, public package **`@rousan/ccal`**.
    npx @rousan/ccal serve --port 8787
    ```
 
-### Publishing via a git tag (optional)
+### Releasing via CI (the normal path)
 
-If you wire up a release workflow, tag the release to match the version and let CI
-run the publish:
+Releases are automated by `.github/workflows/release.yml`, which runs on every
+push to `main`. Bump `version` in `package.json` on a PR to `main` and merge it;
+CI then reads the version and, if the tag `v<version>` does not already exist,
+publishes `@rousan/ccal` to npm, creates the git tag, and cuts a GitHub Release
+with generated notes. Pushes that don't change the version skip (the tag already
+exists), so nothing is re-released by accident.
 
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
+This needs a repository secret **`NPM_TOKEN`** — an npm automation token with
+publish rights to the `@rousan` scope. The manual `npm publish` above is only a
+fallback for local one-off publishes.
 
 The `files` field in `package.json` limits the published tarball to `dist`,
 `README.md`, and `LICENSE`, so source and dev files are not shipped.
