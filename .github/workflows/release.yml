@@ -1,0 +1,71 @@
+# Release workflow.
+#
+# To cut a release:
+#   1. Bump "version" in package.json (e.g. 0.1.0 -> 0.1.1).
+#   2. Commit the bump.
+#   3. Tag and push: git tag vX.Y.Z && git push --tags
+#
+# Pushing a tag that matches v* triggers this workflow, which builds, verifies
+# that the tag matches the package.json version, publishes to npm, and creates a
+# GitHub Release with auto-generated notes.
+#
+# Requires a repository secret named NPM_TOKEN: an npm automation token with
+# publish rights to the @rousan scope.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: Publish to npm and GitHub
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag ($GITHUB_REF_NAME) does not match package.json version (v$PKG_VERSION)."
+            echo "Bump the version in package.json to match the tag, or retag, before releasing."
+            exit 1
+          fi
+          echo "Version check passed: package.json is $PKG_VERSION, tag is $GITHUB_REF_NAME."
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ccal ${{ github.ref_name }}
+          generate_release_notes: true
