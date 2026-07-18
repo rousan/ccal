@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    // Target and module settings suited to a modern Node 22 ESM package. We emit
+    // real .js files (with the shebang preserved) so the published `ccal` bin can
+    // run under plain `node` without a loader.
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023"],
+    "types": ["node"],
+
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "declaration": false,
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

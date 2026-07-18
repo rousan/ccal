@@ -1,0 +1,56 @@
+{
+  "name": "@rousan/ccal",
+  "version": "1.0.0",
+  "description": "Claude Code Adapter for LLMs — an OpenAI-compatible HTTP server that proxies to the local `claude` CLI.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Rousan Ali",
+  "homepage": "https://github.com/rousan/ccal#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rousan/ccal.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rousan/ccal/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "openai-compatible",
+    "llm",
+    "proxy",
+    "cli",
+    "hono",
+    "anthropic"
+  ],
+  "bin": {
+    "ccal": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts serve",
+    "build": "tsc",
+    "start": "node dist/cli.js serve",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

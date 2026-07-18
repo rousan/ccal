@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ccal — an OpenAI-compatible bridge to the Claude CLI</title>
+  <meta name="description" content="Talk to your local Claude CLI through an OpenAI-compatible API. Point any OpenAI client at your Claude subscription." />
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      color-scheme: light dark;
+
+      --bg: #ffffff;
+      --bg-subtle: #f6f6f5;
+      --panel: #fbfbfa;
+      --border: #e6e4e0;
+      --border-strong: #d6d3cd;
+      --text: #1c1a17;
+      --text-muted: #6b665e;
+      --text-faint: #928d84;
+      --accent: #c4623d;
+      --accent-soft: rgba(196, 98, 61, 0.10);
+
+      --term-bg: #1b1917;
+      --term-border: #302c28;
+      --term-text: #e9e5df;
+      --term-muted: #8a847a;
+      --term-accent: #e0916f;
+
+      --radius: 10px;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141311;
+        --bg-subtle: #1b1917;
+        --panel: #1b1917;
+        --border: #2c2824;
+        --border-strong: #3a352f;
+        --text: #ececea;
+        --text-muted: #a49e94;
+        --text-faint: #7c766c;
+        --accent: #e0916f;
+        --accent-soft: rgba(224, 145, 111, 0.12);
+
+        --term-bg: #0e0d0c;
+        --term-border: #2c2824;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ---- Header ---- */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 28px 0 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .brand .logo { width: 26px; height: 26px; color: var(--accent); display: block; }
+    .brand .name { font-size: 17px; }
+
+    .nav {
+      display: flex;
+      gap: 20px;
+      font-size: 14px;
+    }
+    .nav a { color: var(--text-muted); }
+    .nav a:hover { color: var(--text); text-decoration: none; }
+
+    /* ---- Hero ---- */
+    .hero {
+      padding: 76px 0 8px;
+    }
+    .hero .mark {
+      width: 56px;
+      height: 56px;
+      color: var(--accent);
+      margin-bottom: 26px;
+    }
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      margin: 0 0 14px;
+    }
+    h1 {
+      font-size: clamp(30px, 6vw, 46px);
+      line-height: 1.1;
+      letter-spacing: -0.025em;
+      font-weight: 680;
+      margin: 0 0 20px;
+      max-width: 15ch;
+    }
+    h1 .accent { color: var(--accent); }
+    .lede {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 54ch;
+      margin: 0 0 36px;
+    }
+
+    /* ---- Terminal (the hero) ---- */
+    .terminal {
+      background: var(--term-bg);
+      border: 1px solid var(--term-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 12px 32px -12px rgba(0,0,0,0.28);
+    }
+    .terminal .bar {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--term-border);
+    }
+    .terminal .bar .dot {
+      width: 11px; height: 11px; border-radius: 50%;
+      background: #3a3530;
+    }
+    .terminal .bar .title {
+      margin-left: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--term-muted);
+    }
+    .terminal .body {
+      padding: 20px 20px 22px;
+      font-family: var(--mono);
+      font-size: 14.5px;
+      line-height: 1.75;
+      overflow-x: auto;
+    }
+    .terminal .cmd {
+      display: block;
+      color: var(--term-text);
+      white-space: pre;
+    }
+    .terminal .cmd .prompt { color: var(--term-accent); user-select: none; }
+    .terminal .out {
+      display: block;
+      color: var(--term-muted);
+      white-space: pre;
+      margin-top: 6px;
+    }
+    .terminal .out .hl { color: var(--term-text); }
+
+    .hero-note {
+      font-size: 13.5px;
+      color: var(--text-faint);
+      margin: 16px 2px 0;
+    }
+    .hero-note code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    /* ---- Sections ---- */
+    section { padding: 52px 0; border-top: 1px solid var(--border); margin-top: 52px; }
+    section:first-of-type { border-top: 0; margin-top: 0; }
+    h2 {
+      font-size: 13px;
+      font-family: var(--mono);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-faint);
+      margin: 0 0 22px;
+      font-weight: 600;
+    }
+    h3 {
+      font-size: 17px;
+      letter-spacing: -0.01em;
+      margin: 0 0 6px;
+    }
+    p.section-lede {
+      font-size: 16.5px;
+      color: var(--text-muted);
+      max-width: 58ch;
+      margin: 0 0 8px;
+    }
+
+    /* ---- Feature grid ---- */
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 20px 22px;
+    }
+    .card h3 { color: var(--text); }
+    .card p { margin: 0; font-size: 14.5px; color: var(--text-muted); }
+
+    /* ---- Code block (light-aware) ---- */
+    .code {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 13.5px;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre;
+    }
+    .code .c { color: var(--text-faint); }
+    .code .s { color: var(--accent); }
+
+    /* ---- Endpoints ---- */
+    .endpoints { display: flex; flex-direction: column; gap: 10px; }
+    .endpoint {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      padding: 13px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: 13.5px;
+      flex-wrap: wrap;
+    }
+    .endpoint .method {
+      display: inline-block;
+      min-width: 46px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .endpoint .path { color: var(--text); }
+    .endpoint .desc {
+      font-family: var(--sans);
+      font-size: 13.5px;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    /* ---- Footer ---- */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0 48px;
+      margin-top: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 13.5px;
+      color: var(--text-faint);
+    }
+    footer .links { display: flex; gap: 22px; }
+    footer .links a { color: var(--text-muted); }
+    footer .links a:hover { color: var(--text); text-decoration: none; }
+
+    @media (max-width: 560px) {
+      .features { grid-template-columns: 1fr; }
+      .nav { gap: 14px; }
+      .endpoint .desc { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <svg class="logo" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="ccal logo">
+          <circle cx="10" cy="32" r="7" />
+          <circle cx="54" cy="32" r="7" />
+          <line x1="17" y1="32" x2="23" y2="32" />
+          <line x1="41" y1="32" x2="47" y2="32" />
+          <polygon points="32,23 41,32 32,41 23,32" fill="currentColor" stroke="none" />
+        </svg>
+        <span class="name">ccal</span>
+      </div>
+      <nav class="nav">
+        <a href="#how">How it works</a>
+        <a href="#endpoints">Endpoints</a>
+        <a href="https://github.com/rousan/ccal">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="hero">
+      <svg class="mark" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="ccal logo">
+        <circle cx="10" cy="32" r="7" />
+        <circle cx="54" cy="32" r="7" />
+        <line x1="17" y1="32" x2="23" y2="32" />
+        <line x1="41" y1="32" x2="47" y2="32" />
+        <polygon points="32,23 41,32 32,41 23,32" fill="currentColor" stroke="none" />
+      </svg>
+      <p class="eyebrow">Claude Code Adapter for LLMs</p>
+      <h1>Use your Claude subscription as an <span class="accent">OpenAI-compatible</span> endpoint.</h1>
+      <p class="lede">
+        ccal is a small, local HTTP server that bridges the <code>claude</code> CLI
+        to the OpenAI API. Point any OpenAI client at your Claude Code login — no
+        extra API key, no billing.
+      </p>
+
+      <div class="terminal" role="img" aria-label="Terminal running npx @rousan/ccal serve">
+        <div class="bar">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="title">bash</span>
+        </div>
+        <div class="body">
+<span class="cmd"><span class="prompt">$ </span>npx @rousan/ccal serve</span>
+<span class="out">ccal listening on <span class="hl">http://127.0.0.1:8787</span>
+OpenAI-compatible base URL: <span class="hl">http://127.0.0.1:8787/v1</span></span>
+        </div>
+      </div>
+      <p class="hero-note">Requires Node 20+ and the <code>claude</code> CLI installed and logged in.</p>
+    </div>
+
+    <section id="how">
+      <h2>What it does</h2>
+      <p class="section-lede">
+        Under the hood, ccal shells out to
+        <code>claude -p --output-format stream-json</code> and translates the CLI's
+        streaming output into OpenAI Server-Sent Events. It exposes
+        <code>/v1/chat/completions</code> and <code>/v1/models</code>, so existing
+        OpenAI code just works.
+      </p>
+      <div class="features">
+        <div class="card">
+          <h3>Your subscription, anywhere</h3>
+          <p>ccal drives the Claude Code CLI you already have logged in — it never calls the Anthropic API directly, so no separate key or billing is involved.</p>
+        </div>
+        <div class="card">
+          <h3>Drop-in OpenAI compatibility</h3>
+          <p>Set the base URL to <code>http://127.0.0.1:8787/v1</code> and pick <code>sonnet</code>, <code>opus</code>, or <code>haiku</code>. Models, chat completions, and streaming all work.</p>
+        </div>
+        <div class="card">
+          <h3>Local and simple</h3>
+          <p>Binds to localhost by default. No daemon, no config files, no state. One command starts it and Ctrl-C stops it.</p>
+        </div>
+        <div class="card">
+          <h3>Streaming built in</h3>
+          <p>Full SSE support with <code>data: [DONE]</code> framing, plus a plain non-streaming mode that returns a single assembled message.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="client">
+      <h2>Point any OpenAI client at it</h2>
+      <p class="section-lede">The API key is ignored — auth comes from your local <code>claude</code> login — so any placeholder works.</p>
+      <div class="code">
+<span class="c"># Same request you'd send to OpenAI, different base URL</span>
+curl -N http://127.0.0.1:8787/v1/chat/completions \
+  -H <span class="s">'Content-Type: application/json'</span> \
+  -d <span class="s">'{
+    "model": "sonnet",
+    "stream": true,
+    "messages": [{ "role": "user", "content": "Say hello in one word." }]
+  }'</span>
+      </div>
+    </section>
+
+    <section id="endpoints">
+      <h2>Endpoints</h2>
+      <div class="endpoints">
+        <div class="endpoint">
+          <span><span class="method">POST</span><span class="path">/v1/chat/completions</span></span>
+          <span class="desc">OpenAI-compatible chat, streaming or not</span>
+        </div>
+        <div class="endpoint">
+          <span><span class="method">GET</span><span class="path">/v1/models</span></span>
+          <span class="desc">Lists sonnet, opus, and haiku</span>
+        </div>
+        <div class="endpoint">
+          <span><span class="method">GET</span><span class="path">/health</span></span>
+          <span class="desc">Liveness probe → { "ok": true }</span>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <span>MIT © Rousan Ali</span>
+      <span class="links">
+        <a href="https://github.com/rousan/ccal">GitHub</a>
+        <a href="https://www.npmjs.com/package/@rousan/ccal">npm</a>
+        <a href="https://github.com/rousan/ccal#readme">Docs</a>
+      </span>
+    </footer>
+  </div>
+</body>
+</html>

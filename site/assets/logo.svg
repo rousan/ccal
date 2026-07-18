@@ -1,0 +1,23 @@
+<!--
+  ccal logo — a monochrome, geometric mark.
+
+  Two hollow endpoints (the `claude` CLI on one side, an OpenAI-compatible client
+  on the other) are bridged through a central adapter node (the diamond). The
+  whole mark is drawn in `currentColor`, so it inherits the surrounding text
+  color and reads correctly on both light and dark backgrounds. It stays legible
+  down to 16-24px and is designed to sit at ~64-72px in the README.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     fill="none" stroke="currentColor" stroke-width="5"
+     stroke-linecap="round" stroke-linejoin="round" role="img"
+     aria-label="ccal logo">
+  <!-- Left endpoint -->
+  <circle cx="10" cy="32" r="7" />
+  <!-- Right endpoint -->
+  <circle cx="54" cy="32" r="7" />
+  <!-- Bridge segments joining each endpoint to the adapter node -->
+  <line x1="17" y1="32" x2="23" y2="32" />
+  <line x1="41" y1="32" x2="47" y2="32" />
+  <!-- Central adapter node (a filled diamond) -->
+  <polygon points="32,23 41,32 32,41 23,32" fill="currentColor" stroke="none" />
+</svg>
