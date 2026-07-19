@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-19
+
 ### Added
 
 - `ccal version` (and `--version` / `-v`) prints the installed version.
@@ -41,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and common install locations.
 - Permissive CORS for browser and webview clients.
 
-[Unreleased]: https://github.com/rousan/ccal/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/rousan/ccal/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/rousan/ccal/releases/tag/v1.2.0
 [1.1.0]: https://github.com/rousan/ccal/releases/tag/v1.1.0
 [1.0.0]: https://github.com/rousan/ccal/releases/tag/v1.0.0
