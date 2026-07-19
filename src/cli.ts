@@ -7,10 +7,62 @@
 // We keep argument parsing deliberately small and dependency-free — the surface
 // is tiny, so a hand-rolled parser is clearer than pulling in a CLI framework.
 
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+
 import { serve } from "@hono/node-server";
 
 import { createServer } from "./server.js";
 import { checkClaude } from "./claude-binary.js";
+
+// The installed version, read from the package manifest (one dir up from dist/).
+const VERSION = (
+  createRequire(import.meta.url)("../package.json") as { version: string }
+).version;
+
+/** GitHub release notes URL for a version, shown after a successful update. */
+const releaseUrl = (v: string) =>
+  `https://github.com/rousan/ccal/releases/tag/v${v}`;
+
+/** Latest published version on npm, or null if the registry is unreachable. */
+async function latestVersion(): Promise<string | null> {
+  try {
+    const res = await fetch("https://registry.npmjs.org/@rousan%2fccal/latest", {
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { version?: string };
+    return body.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Compare npm's latest against the running version and self-update if newer. */
+async function runUpdate(): Promise<void> {
+  console.log(`Installed: ccal ${VERSION}`);
+  const latest = await latestVersion();
+  if (!latest) {
+    fail("Couldn't reach the npm registry to check for updates.");
+  }
+  if (latest === VERSION) {
+    console.log("ccal is already up to date.");
+    return;
+  }
+  console.log(`Updating ccal ${VERSION} -> ${latest}...`);
+  const result = spawnSync("npm", ["install", "-g", `@rousan/ccal@${latest}`], {
+    stdio: "inherit",
+  });
+  if (result.status === 0) {
+    console.log(`Updated to ccal ${latest}.`);
+    console.log(`Release notes: ${releaseUrl(latest)}`);
+  } else {
+    fail(
+      "Automatic update failed. Update manually with:\n" +
+        "  npm install -g @rousan/ccal@latest",
+    );
+  }
+}
 
 // Parsed options for the `serve` subcommand.
 interface ServeOptions {
@@ -95,9 +147,11 @@ function printHelp(): void {
       "An OpenAI-compatible HTTP server that proxies to the local `claude` CLI.",
       "",
       "Usage:",
-      "  ccal serve [options]",
+      "  ccal serve [options]     Start the OpenAI-compatible server",
+      "  ccal update              Update ccal to the latest published version",
+      "  ccal version             Print the installed version",
       "",
-      "Options:",
+      "Serve options:",
       "  --port <n>              Port to bind (default: 8787)",
       "  --host <addr>           Host to bind (default: 127.0.0.1)",
       "  --cwd <dir>             Working directory for the claude process",
@@ -110,7 +164,7 @@ function printHelp(): void {
   );
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2);
 
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
@@ -119,8 +173,21 @@ function main(): void {
   }
 
   const command = argv[0];
+
+  if (command === "version" || command === "--version" || command === "-v") {
+    console.log(`ccal ${VERSION}`);
+    return;
+  }
+
+  if (command === "update") {
+    await runUpdate();
+    return;
+  }
+
   if (command !== "serve") {
-    fail(`Unknown command: ${command}. Try 'ccal serve'.`);
+    fail(
+      `Unknown command: ${command}. Try 'ccal serve', 'ccal update', or 'ccal version'.`,
+    );
   }
 
   // Allow `ccal serve --help` to print usage rather than start the server.
@@ -156,4 +223,4 @@ function main(): void {
   });
 }
 
-main();
+main().catch((err) => fail(err instanceof Error ? err.message : String(err)));

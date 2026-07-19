@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ccal version` (and `--version` / `-v`) prints the installed version.
+- `ccal update` checks npm for a newer release and self-updates via
+  `npm install -g` when one is available.
+
 ## [1.1.0] - 2026-07-19
 
 ### Added
