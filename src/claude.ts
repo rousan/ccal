@@ -6,6 +6,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { dirname, delimiter } from "node:path";
 
+import type { ImageContent } from "./prompt.js";
+
 // Options controlling how the claude process is launched for one request.
 export interface SpawnOptions {
   // Absolute path to the resolved `claude` binary.
@@ -16,6 +18,10 @@ export interface SpawnOptions {
   system: string | null;
   // The flattened transcript to write to claude's stdin.
   stdinPayload: string;
+  // Images to deliver with the prompt. When non-empty, claude is switched to
+  // stream-json input so the pictures can ride along as content blocks (plain
+  // text input cannot carry them). Empty/omitted keeps the default text input.
+  images?: ImageContent[];
   // Working directory for the process. When set, claude loads tools, MCP
   // servers, and CLAUDE.md relative to it. Defaults to the current directory.
   cwd?: string;
@@ -41,6 +47,8 @@ export interface ClaudeProcess {
 // is a single text prompt on stdin (the CLI's default input format) — one prompt
 // in, one response out.
 export function spawnClaude(options: SpawnOptions): ClaudeProcess {
+  const hasImages = !!options.images && options.images.length > 0;
+
   const args: string[] = [
     "-p",
     "--output-format",
@@ -51,6 +59,14 @@ export function spawnClaude(options: SpawnOptions): ClaudeProcess {
     options.model,
     "--no-session-persistence",
   ];
+
+  // With images we must use stream-json input, the only input format that can
+  // carry content blocks. It's still one user message in, one response out — we
+  // send a single `user` event with a text block plus the image blocks, then
+  // close stdin.
+  if (hasImages) {
+    args.push("--input-format", "stream-json");
+  }
 
   if (options.system !== null && options.system.length > 0) {
     args.push("--append-system-prompt", options.system);
@@ -89,7 +105,22 @@ export function spawnClaude(options: SpawnOptions): ClaudeProcess {
   child.stdin.on("error", () => {
     // Ignore write errors on stdin; the process may have already exited.
   });
-  child.stdin.write(options.stdinPayload);
+  if (hasImages) {
+    // One stream-json `user` event: the transcript as a text block (omitted when
+    // empty, e.g. an images-only turn) followed by each image as an Anthropic
+    // image content block. A trailing newline delimits the JSONL line.
+    const content: Array<Record<string, unknown>> = [];
+    if (options.stdinPayload.length > 0) {
+      content.push({ type: "text", text: options.stdinPayload });
+    }
+    for (const img of options.images!) {
+      content.push({ type: "image", source: img.source });
+    }
+    const event = { type: "user", message: { role: "user", content } };
+    child.stdin.write(`${JSON.stringify(event)}\n`);
+  } else {
+    child.stdin.write(options.stdinPayload);
+  }
   child.stdin.end();
 
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
