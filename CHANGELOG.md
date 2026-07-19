@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-19
+
+### Added
+
+- `GET /v1/models` now returns OpenRouter-style catalog metadata per model
+  (context length, input modalities, supported parameters, description) so
+  metadata-aware clients can show context size and capability badges. Plain
+  OpenAI clients ignore the extra fields.
+
 ## [1.0.0] - 2026-07-18
 
 ### Added
@@ -26,5 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and common install locations.
 - Permissive CORS for browser and webview clients.
 
-[Unreleased]: https://github.com/rousan/ccal/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/rousan/ccal/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/rousan/ccal/releases/tag/v1.1.0
 [1.0.0]: https://github.com/rousan/ccal/releases/tag/v1.0.0
