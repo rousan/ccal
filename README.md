@@ -108,7 +108,9 @@ provider with base URL `http://127.0.0.1:8787/v1`, any API key, and pick one of
 - `POST /v1/chat/completions` → OpenAI-compatible chat completions. Supports both
   `stream: true` (SSE `data: {choices:[{delta:{content}}]}` frames terminated by
   `data: [DONE]`) and the non-streaming case (a single assembled
-  `choices[0].message.content`).
+  `choices[0].message.content`). **Images** work too: include `image_url`
+  content parts (a `data:` base64 URL or a remote http(s) URL) and they are
+  forwarded to `claude` as image blocks for the vision models to see.
 
 ### How messages map to the CLI
 

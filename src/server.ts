@@ -81,7 +81,7 @@ export function createServer(config: AdapterConfig = {}): Hono {
     }
 
     const messages = Array.isArray(body.messages) ? body.messages : [];
-    const { stdinPayload, system } = preparePrompt(messages);
+    const { stdinPayload, system, images } = preparePrompt(messages);
 
     const model =
       typeof body.model === "string" && body.model.trim().length > 0
@@ -101,6 +101,7 @@ export function createServer(config: AdapterConfig = {}): Hono {
       model,
       system,
       stdinPayload,
+      images,
       cwd: config.cwd,
       permissionMode: config.permissionMode,
     });
