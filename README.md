@@ -121,6 +121,14 @@ provider with base URL `http://127.0.0.1:8787/v1`, any API key, and pick one of
   one response out — claude's streaming JSON output is translated back into
   OpenAI chunks (assistant text plus compact one-line notes for any tool calls).
 
+## Commands
+
+```
+ccal serve [options]   Start the OpenAI-compatible server
+ccal update            Update ccal to the latest published version
+ccal version           Print the installed version (also: --version, -v)
+```
+
 ## Configuration
 
 ```
