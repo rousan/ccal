@@ -70,6 +70,10 @@ interface ServeOptions {
   host: string;
   cwd?: string;
   permissionMode?: string;
+  // Origins allowed to call this server from a page on the public internet.
+  // Repeatable, empty by default — see the Private Network Access note in
+  // server.ts for why this is opt-in rather than always on.
+  allowedOrigins: string[];
 }
 
 // Default port and host, chosen to match the value documented in the README and
@@ -80,7 +84,11 @@ const DEFAULT_HOST = "127.0.0.1";
 // Parse the flags following the `serve` subcommand. Supports both `--flag value`
 // and `--flag=value` forms. Unknown flags cause a friendly error.
 function parseServeArgs(args: string[]): ServeOptions {
-  const options: ServeOptions = { port: DEFAULT_PORT, host: DEFAULT_HOST };
+  const options: ServeOptions = {
+    port: DEFAULT_PORT,
+    host: DEFAULT_HOST,
+    allowedOrigins: [],
+  };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -124,6 +132,32 @@ function parseServeArgs(args: string[]): ServeOptions {
       case "--permission-mode":
         options.permissionMode = takeValue();
         break;
+      case "--allow-origin": {
+        // Validated here rather than at use, so a typo is a startup error and
+        // not a silent "why is my site still blocked" ten minutes later. An
+        // origin is scheme + host + port and nothing else: `new URL(...).origin`
+        // is the canonical form, and anything with a path is a mistake.
+        const value = takeValue();
+        let parsed: URL;
+        try {
+          parsed = new URL(value);
+        } catch {
+          fail(
+            `Invalid --allow-origin: ${value}\n` +
+              "  Expected a full origin, e.g. https://example.com",
+          );
+        }
+        if (parsed.origin === "null" || parsed.origin !== value.replace(/\/$/, "")) {
+          fail(
+            `Invalid --allow-origin: ${value}\n` +
+              `  Expected just the origin, e.g. ${parsed.origin}`,
+          );
+        }
+        if (!options.allowedOrigins.includes(parsed.origin)) {
+          options.allowedOrigins.push(parsed.origin);
+        }
+        break;
+      }
       default:
         fail(`Unknown option: ${arg}`);
     }
@@ -156,6 +190,11 @@ function printHelp(): void {
       "  --host <addr>           Host to bind (default: 127.0.0.1)",
       "  --cwd <dir>             Working directory for the claude process",
       "  --permission-mode <m>   Permission mode passed to claude (non-default only)",
+      "  --allow-origin <origin> Let a site on the public internet call this server",
+      "                          (repeatable). Required by Chrome's Private Network",
+      "                          Access rules; without it such a request just hangs.",
+      "                          Only name sites you trust — they can drive your",
+      "                          claude CLI. e.g. --allow-origin https://example.com",
       "  --help                  Show this help",
       "",
       "Once running, point any OpenAI-compatible client at:",
@@ -203,13 +242,24 @@ async function main(): Promise<void> {
   // is informational only; the server still starts and will report a clear 502
   // per request if claude cannot be found later.
   const claude = checkClaude();
-  const config = { cwd: options.cwd, permissionMode: options.permissionMode };
+  const config = {
+    cwd: options.cwd,
+    permissionMode: options.permissionMode,
+    allowedOrigins: options.allowedOrigins,
+  };
   const app = createServer(config);
 
   serve({ fetch: app.fetch, port: options.port, hostname: options.host }, (info) => {
     const base = `http://${options.host}:${info.port}`;
     console.log(`ccal listening on ${base}`);
     console.log(`OpenAI-compatible base URL: ${base}/v1`);
+    if (options.allowedOrigins.length > 0) {
+      // Printed because it is a deliberate loosening of a browser protection —
+      // it should be visible in the terminal for as long as the server runs.
+      console.log(
+        `Allowing public sites to reach this server: ${options.allowedOrigins.join(", ")}`,
+      );
+    }
     if (claude.available) {
       const version = claude.version ? ` (${claude.version})` : "";
       console.log(`Using claude CLI at ${claude.path}${version}`);
