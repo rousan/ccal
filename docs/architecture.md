@@ -40,7 +40,9 @@ spawns a fresh `claude` subprocess and streams its output straight to the client
 
 `createServer()` builds a Hono app with permissive CORS (any origin;
 `Content-Type` and `Authorization` headers; `GET`/`POST`/`OPTIONS`) so browser and
-webview clients aren't blocked. It mounts three routes:
+webview clients aren't blocked — narrowed to named origins when `--allow-origin`
+is passed, which also answers Private Network Access preflights (see below). It
+mounts three routes:
 
 - `GET /health` → `{ ok: true }`
 - `GET /v1/models` → the static model list (see below)
@@ -183,9 +185,32 @@ Returns a static OpenAI-shaped list of exactly three ids — `sonnet`, `opus`,
 `object: "model"`, `owned_by: "ccal"`, and a stable `created: 0` so responses are
 deterministic. The default model when a request omits `model` is `sonnet`.
 
-## CORS
+## CORS and Private Network Access
 
-CORS is intentionally permissive (`origin: "*"`) so local browser apps and
-webviews (such as Warren) can call ccal without same-origin friction. Since ccal
-binds to `127.0.0.1` by default and performs no auth of its own, this is a local
-convenience — see [SECURITY.md](../SECURITY.md) before exposing it more widely.
+By default CORS is intentionally permissive (`origin: "*"`) so local browser apps
+and webviews (such as Warren) can call ccal without same-origin friction. Since
+ccal binds to `127.0.0.1` by default and performs no auth of its own, this is a
+local convenience — see [SECURITY.md](../SECURITY.md) before exposing it more
+widely.
+
+CORS alone is not enough for a page served from a **public** origin. Chrome
+applies a second, independent check — **Private Network Access** — before letting
+a public page reach a private address. The preflight carries
+`Access-Control-Request-Private-Network: true`, and the response must answer
+`Access-Control-Allow-Private-Network: true`.
+
+When that answer is missing the request **hangs**: no console error, no CORS
+message, no rejected promise. Nothing surfaces that a user could search for,
+which is why this is written down rather than left to be rediscovered.
+
+`--allow-origin <origin>` (repeatable) opts a named origin in. It does two
+things: the PNA header is answered for that origin, and CORS narrows from `*` to
+exactly the origins named. It is deliberately opt-in — as the spawn section above
+notes, ccal runs claude as a full Claude Code agent, with tools, MCP servers and
+`CLAUDE.md` loaded relative to `--cwd`. An origin allowed here can drive all of
+that, so waiving PNA for every site on the internet would hand it to any page the
+user happens to visit.
+
+One consequence worth internalising: a page on `localhost` calling `127.0.0.1` is
+private-to-private, so PNA never engages. The mechanism is invisible during local
+development and shows up only once the calling page is deployed.
