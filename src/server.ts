@@ -28,6 +28,10 @@ export interface AdapterConfig {
   cwd?: string;
   // Optional permission mode forwarded to claude (only when non-default).
   permissionMode?: string;
+  // Origins allowed to reach this server from a page served over the public
+  // internet — see the Private Network Access note in `createServer`. Empty or
+  // omitted turns the feature off, which is the default and the safe posture.
+  allowedOrigins?: string[];
 }
 
 // Generate a unique-ish completion id. We use the high-resolution clock in
@@ -53,13 +57,56 @@ function sseChunk(id: string, text: string): string {
 export function createServer(config: AdapterConfig = {}): Hono {
   const app = new Hono();
 
+  const allowedOrigins = config.allowedOrigins ?? [];
+
+  // ---------------------------------------------------------------------------
+  // Private Network Access
+  //
+  // CORS alone is not enough for a page served from a *public* origin (say
+  // https://example.com) to call this server on 127.0.0.1. Chrome applies a
+  // second, separate check — Private Network Access — which requires the
+  // preflight to carry `Access-Control-Request-Private-Network: true` and the
+  // response to answer `Access-Control-Allow-Private-Network: true`.
+  //
+  // Without that answer the fetch does not fail: it HANGS. No console error, no
+  // CORS message, no rejected promise. That silence is the entire reason this
+  // block is commented at this length.
+  //
+  // WHY IT IS OFF BY DEFAULT. Answering `true` for every origin would let any
+  // website you happen to visit drive your local `claude` CLI — spending your
+  // subscription and running it against whatever `--cwd` points at. PNA exists
+  // precisely to stop that, so ccal only waives it for origins you name
+  // explicitly with `--allow-origin`. No flag, no header, no change in
+  // behaviour from earlier versions.
+  //
+  // Note this is invisible when both ends are local: a page on localhost
+  // calling 127.0.0.1 is private-to-private, so PNA never engages and the whole
+  // mechanism appears not to exist. It only shows up from a deployed site.
+  // ---------------------------------------------------------------------------
+  if (allowedOrigins.length > 0) {
+    app.use("*", async (c, next) => {
+      await next();
+      // Only ever answer the question the browser actually asked, and only for
+      // an origin the operator named.
+      if (c.req.header("Access-Control-Request-Private-Network") !== "true") {
+        return;
+      }
+      const origin = c.req.header("Origin");
+      if (origin && allowedOrigins.includes(origin)) {
+        c.header("Access-Control-Allow-Private-Network", "true");
+      }
+    });
+  }
+
   // Permissive CORS so browser and webview clients (like the Warren app) are not
-  // blocked by same-origin policy. We allow any origin and the headers an
-  // OpenAI-style client typically sends.
+  // blocked by same-origin policy. We allow the headers an OpenAI-style client
+  // typically sends. When `--allow-origin` is given, CORS narrows to exactly
+  // those origins — reflecting `*` while also waiving PNA for a named origin
+  // would be an odd pair of promises to make.
   app.use(
     "*",
     cors({
-      origin: "*",
+      origin: allowedOrigins.length > 0 ? allowedOrigins : "*",
       allowMethods: ["GET", "POST", "OPTIONS"],
       allowHeaders: ["Content-Type", "Authorization"],
     }),

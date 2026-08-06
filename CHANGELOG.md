@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-06
+
+### Added
+
+- **`--allow-origin <origin>` (repeatable).** Lets a site served over the public
+  internet call a local ccal. Chrome enforces Private Network Access on top of
+  ordinary CORS: a public page reaching `127.0.0.1` must be answered
+  `Access-Control-Allow-Private-Network: true`, and ccal never sent that header,
+  so such a request would **hang with no error and nothing in the console**. The
+  flag is opt-in because an allowed origin can drive your `claude` CLI; with no
+  flag, behaviour is exactly as before. Passing it also narrows CORS from `*` to
+  the origins named.
+
 ## [1.3.0] - 2026-07-19
 
 ### Added

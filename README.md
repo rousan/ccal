@@ -140,6 +140,8 @@ ccal serve [options]
   --host <addr>           Host to bind (default: 127.0.0.1)
   --cwd <dir>             Working directory for the claude process
   --permission-mode <m>   Permission mode passed to claude (non-default only)
+  --allow-origin <origin> Let a site on the public internet call this server
+                          (repeatable)
   --help                  Show this help
 ```
 
@@ -147,6 +149,30 @@ ccal serve [options]
   and `CLAUDE.md` it loads.
 - `CCAL_CLAUDE_PATH` (environment variable) forces a specific `claude` binary
   when auto-detection does not find the right one.
+
+### Calling ccal from a website
+
+If the page calling ccal is served over the public internet — a deployed app
+pointed at your local ccal, rather than something on `localhost` — you need
+`--allow-origin`:
+
+```
+ccal serve --allow-origin https://example.com
+```
+
+Chrome applies **Private Network Access** on top of ordinary CORS: a public page
+reaching a private address must send a preflight and be answered
+`Access-Control-Allow-Private-Network: true`. Without that, **the request does
+not fail — it hangs**, with no console error and nothing to search for. If a
+deployed app sits forever on "connecting", this is almost always why.
+
+Two things worth knowing before you use it:
+
+- **Only name sites you trust.** An allowed origin can drive your `claude` CLI,
+  which means your subscription and whatever `--cwd` points at.
+- **You will not reproduce the problem locally.** A page on `localhost` calling
+  `127.0.0.1` is private-to-private, so PNA never engages and everything works
+  without the flag. It only appears once the page is deployed.
 
 ## Documentation
 
