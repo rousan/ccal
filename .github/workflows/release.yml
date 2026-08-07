@@ -6,6 +6,9 @@
 # with auto-generated notes. Plain pushes that don't bump the version re-run this
 # but skip (the tag already exists), so no accidental re-release.
 #
+# It can also be run by hand from the Actions tab, for when the push that should
+# have released never got a run — see the note on the trigger below.
+#
 # Requires a repository secret named NPM_TOKEN: an npm automation token with
 # publish rights to the @rousan scope.
 
@@ -14,6 +17,14 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual trigger, because a push is not always available when you need one.
+  # 1.4.0 was merged to main during a GitHub Actions outage: no workflow ran for
+  # the merge, GitHub does not backfill missed runs, and with no dispatch trigger
+  # the only way to release was to push another commit to main purely to make
+  # something happen. Safe for the same reason the push path is — the job below
+  # skips when the tag for the current version already exists — so running this
+  # by hand can rescue a missed release but can never double-publish one.
+  workflow_dispatch:
 
 permissions:
   contents: write
