@@ -87,6 +87,27 @@ You should see `data: {...}` SSE frames followed by `data: [DONE]`.
 > chat endpoint needs `claude` installed and logged in; if it can't be found you
 > get a `502` with a clear message.
 
+**Vanilla mode:** start the server with `--vanilla` and a request that would
+otherwise use a tool should instead get a plain-English answer with no tool
+activity:
+
+```sh
+node dist/cli.js serve --port 8787 --vanilla
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "sonnet",
+    "messages": [{ "role": "user", "content": "List the files in the current directory." }]
+  }'
+```
+
+Compare against the same request without `--vanilla`: the agentic server
+actually runs a tool and returns real file names (plus a `*↳ Bash: ...*` note);
+the vanilla server says it can't do that and asks you to run the command
+yourself. That contrast is the whole point of the flag — see [the README
+section](../README.md#vanilla-mode-no-tools-no-mcp-no-claudemd) for what
+changes and why.
+
 If auto-detection doesn't find your binary, set the override:
 
 ```sh

@@ -104,7 +104,9 @@ provider with base URL `http://127.0.0.1:8787/v1`, any API key, and pick one of
 
 - `GET /health` → `{ "ok": true }`
 - `GET /v1/models` → the OpenAI model list. Three ids are advertised, matching
-  the `claude` CLI's `--model` aliases: `sonnet`, `opus`, `haiku`.
+  the `claude` CLI's `--model` aliases: `sonnet`, `opus`, `haiku`. When the
+  server was started with `--vanilla`, `supported_parameters` drops `"tools"`
+  for every model, since the backing agent has none to use.
 - `POST /v1/chat/completions` → OpenAI-compatible chat completions. Supports both
   `stream: true` (SSE `data: {choices:[{delta:{content}}]}` frames terminated by
   `data: [DONE]`) and the non-streaming case (a single assembled
@@ -116,7 +118,9 @@ provider with base URL `http://127.0.0.1:8787/v1`, any API key, and pick one of
 
 - `system` messages are combined and passed to claude via
   `--append-system-prompt` (appended to the default agent prompt, so tool use
-  still works).
+  still works). In [`--vanilla`](#vanilla-mode-no-tools-no-mcp-no-claudemd)
+  mode they go through `--system-prompt` instead, replacing the prompt rather
+  than extending it.
 - `user` / `assistant` messages are flattened into a single text transcript sent
   on stdin. A lone message is sent verbatim; a multi-turn conversation is
   rendered as a `User:` / `Assistant:` labeled transcript. This is one prompt in,
@@ -142,13 +146,54 @@ ccal serve [options]
   --permission-mode <m>   Permission mode passed to claude (non-default only)
   --allow-origin <origin> Let a site on the public internet call this server
                           (repeatable)
+  --vanilla               Serve plain model calls instead of a full Claude
+                          Code agent (no tools, no MCP servers, no CLAUDE.md)
   --help                  Show this help
 ```
 
 - `--cwd` controls where claude runs, which determines the tools, MCP servers,
-  and `CLAUDE.md` it loads.
+  and `CLAUDE.md` it loads (agentic mode only — `--vanilla` turns all three off
+  regardless of `--cwd`).
 - `CCAL_CLAUDE_PATH` (environment variable) forces a specific `claude` binary
   when auto-detection does not find the right one.
+
+### Vanilla mode: no tools, no MCP, no CLAUDE.md
+
+By default ccal runs `claude` as a **full Claude Code agent**: it has its
+built-in tools, connects to whatever MCP servers your `claude` config defines,
+and loads `CLAUDE.md` from `--cwd`. That is the right shape for most uses of
+ccal — a chat UI or SDK that just wants the model to actually do things.
+
+It is the wrong shape when the *caller* is itself an agent with its own tool
+loop — for example [opencode](https://opencode.ai). Point opencode at ccal
+without `--vanilla` and you get two independent agents fighting over the same
+turn: opencode issues tool calls of its own while the `claude` process
+underneath is separately reading files, running bash, and picking up whatever
+`CLAUDE.md` sits in `--cwd`.
+
+```sh
+ccal serve --vanilla
+```
+
+turns every request into a plain model call:
+
+- No built-in tools (`--tools ""` on the `claude` invocation).
+- No `CLAUDE.md`, skills, plugins, hooks, or MCP servers (`--safe-mode`, plus
+  `--strict-mcp-config` as a second guarantee against MCP).
+- The caller's `system` message **replaces** the agent's default system prompt
+  (`--system-prompt`) instead of being appended to it — so the model isn't
+  told it's a coding agent with tools it no longer has. If a request carries
+  no system message, ccal substitutes a small neutral one rather than leaving
+  the agent framing in place.
+
+Your own subscription login still works — vanilla mode does *not* use
+`--bare`, which would require `ANTHROPIC_API_KEY` and stop reading your
+OAuth/keychain login. `GET /v1/models` also drops `"tools"` from
+`supported_parameters` in this mode, since the backing model genuinely can't
+use any.
+
+Off by default; existing consumers that rely on the agentic behaviour are
+unaffected.
 
 ### Calling ccal from a website
 
