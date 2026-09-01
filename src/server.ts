@@ -32,6 +32,12 @@ export interface AdapterConfig {
   // internet — see the Private Network Access note in `createServer`. Empty or
   // omitted turns the feature off, which is the default and the safe posture.
   allowedOrigins?: string[];
+  // Run every request as a plain model call instead of a full Claude Code
+  // agent: no tools, no MCP servers, no CLAUDE.md, no agent system prompt. See
+  // the vanilla-mode block in claude.ts's spawnClaude() for exactly what that
+  // changes and why. Off by default — existing consumers rely on the agentic
+  // behaviour, which stays completely unchanged when this is unset.
+  vanilla?: boolean;
 }
 
 // Generate a unique-ish completion id. We use the high-resolution clock in
@@ -115,8 +121,10 @@ export function createServer(config: AdapterConfig = {}): Hono {
   // Simple liveness probe.
   app.get("/health", (c) => c.json({ ok: true }));
 
-  // The OpenAI model list. Mirrors the ids the CLI understands.
-  app.get("/v1/models", (c) => c.json(listModels()));
+  // The OpenAI model list. Mirrors the ids the CLI understands. In vanilla
+  // mode the `tools` capability is dropped from `supported_parameters` — see
+  // the comment on listModels() in models.ts for why.
+  app.get("/v1/models", (c) => c.json(listModels(config.vanilla)));
 
   // The OpenAI chat-completions endpoint.
   app.post("/v1/chat/completions", async (c) => {
@@ -151,6 +159,7 @@ export function createServer(config: AdapterConfig = {}): Hono {
       images,
       cwd: config.cwd,
       permissionMode: config.permissionMode,
+      vanilla: config.vanilla,
     });
 
     const id = genId();

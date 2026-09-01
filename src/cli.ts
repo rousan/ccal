@@ -2,7 +2,7 @@
 // The `ccal` command-line entry point. It supports a single `serve` subcommand
 // that starts the OpenAI-compatible HTTP server:
 //
-//   ccal serve [--port <n>] [--host <addr>] [--cwd <dir>] [--permission-mode <m>]
+//   ccal serve [--port <n>] [--host <addr>] [--cwd <dir>] [--permission-mode <m>] [--vanilla]
 //
 // We keep argument parsing deliberately small and dependency-free — the surface
 // is tiny, so a hand-rolled parser is clearer than pulling in a CLI framework.
@@ -74,6 +74,11 @@ interface ServeOptions {
   // Repeatable, empty by default — see the Private Network Access note in
   // server.ts for why this is opt-in rather than always on.
   allowedOrigins: string[];
+  // Serve every request as a plain model call instead of a full Claude Code
+  // agent — no tools, no MCP servers, no CLAUDE.md, no agent system prompt.
+  // Off by default; see the vanilla-mode block in claude.ts's spawnClaude()
+  // for exactly what it changes and why.
+  vanilla: boolean;
 }
 
 // Default port and host, chosen to match the value documented in the README and
@@ -88,6 +93,7 @@ function parseServeArgs(args: string[]): ServeOptions {
     port: DEFAULT_PORT,
     host: DEFAULT_HOST,
     allowedOrigins: [],
+    vanilla: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -131,6 +137,13 @@ function parseServeArgs(args: string[]): ServeOptions {
         break;
       case "--permission-mode":
         options.permissionMode = takeValue();
+        break;
+      case "--vanilla":
+        // Boolean flag: presence means on. It never consumes the next argv
+        // item as a value (unlike --port/--cwd/etc above) — only the
+        // --vanilla=false inline form can turn it back off, for symmetry with
+        // the other flags' --flag=value syntax.
+        options.vanilla = inlineValue === undefined ? true : inlineValue !== "false";
         break;
       case "--allow-origin": {
         // Validated here rather than at use, so a typo is a startup error and
@@ -195,6 +208,11 @@ function printHelp(): void {
       "                          Access rules; without it such a request just hangs.",
       "                          Only name sites you trust — they can drive your",
       "                          claude CLI. e.g. --allow-origin https://example.com",
+      "  --vanilla               Serve plain model calls instead of a full Claude",
+      "                          Code agent: no tools, no MCP servers, no CLAUDE.md,",
+      "                          no agent system prompt. For callers that run their",
+      "                          own tool loop (e.g. opencode) and would otherwise",
+      "                          fight a second agent underneath ccal. Off by default.",
       "  --help                  Show this help",
       "",
       "Once running, point any OpenAI-compatible client at:",
@@ -246,6 +264,7 @@ async function main(): Promise<void> {
     cwd: options.cwd,
     permissionMode: options.permissionMode,
     allowedOrigins: options.allowedOrigins,
+    vanilla: options.vanilla,
   };
   const app = createServer(config);
 
@@ -258,6 +277,13 @@ async function main(): Promise<void> {
       // it should be visible in the terminal for as long as the server runs.
       console.log(
         `Allowing public sites to reach this server: ${options.allowedOrigins.join(", ")}`,
+      );
+    }
+    if (options.vanilla) {
+      // Printed for the same reason as the allow-origin note above: it is a
+      // deliberate, visible behaviour change, not a silent default.
+      console.log(
+        "Vanilla mode: serving plain model calls (no tools, no MCP servers, no CLAUDE.md).",
       );
     }
     if (claude.available) {

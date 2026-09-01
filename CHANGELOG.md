@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`--vanilla`.** Serves every request as a plain model call instead of a full
+  Claude Code agent: no built-in tools, no MCP servers, no `CLAUDE.md`, and the
+  caller's system message replaces the agent prompt instead of extending it.
+  For callers that run their own tool loop (opencode being the motivating
+  case) and would otherwise end up fighting a second agent underneath ccal.
+  Off by default; existing agentic behaviour is unchanged. `GET /v1/models`
+  drops `"tools"` from `supported_parameters` in this mode.
+
 ## [1.4.0] - 2026-08-06
 
 ### Added

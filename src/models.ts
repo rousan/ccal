@@ -66,11 +66,25 @@ export interface ModelObject {
 }
 
 // Build the full OpenAI-shaped model list payload.
-export function listModels(): { object: "list"; data: ModelObject[] } {
+//
+// `vanilla` mirrors the server's --vanilla flag. `supported_parameters` is
+// catalog metadata about what the *backing agent* can do while producing a
+// response, not a literal OpenAI tool-calling contract ccal implements itself
+// (it doesn't read a `tools` field off the request at all). In vanilla mode
+// the claude invocation runs with all tools disabled (see spawnClaude()'s
+// vanilla block in claude.ts), so advertising "tools" there would describe a
+// capability that request path cannot actually exercise. We drop it rather
+// than leave a metadata-aware client to discover the gap by trying. Reasoning
+// (extended thinking) is unaffected by tool availability — verified: thinking
+// tokens still show up in vanilla responses from sonnet/opus — so it stays.
+export function listModels(vanilla = false): { object: "list"; data: ModelObject[] } {
   return {
     object: "list",
     data: MODEL_IDS.map((id) => {
       const meta = MODEL_META[id];
+      const supportedParameters = vanilla
+        ? meta.supportedParameters.filter((p) => p !== "tools")
+        : meta.supportedParameters;
       return {
         id,
         object: "model",
@@ -81,7 +95,7 @@ export function listModels(): { object: "list"; data: ModelObject[] } {
           input_modalities: meta.inputModalities,
           output_modalities: ["text"],
         },
-        supported_parameters: meta.supportedParameters,
+        supported_parameters: supportedParameters,
         description: meta.description,
       };
     }),
