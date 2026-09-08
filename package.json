@@ -1,6 +1,6 @@
 {
   "name": "@rousan/ccal",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Claude Code Adapter for LLMs — an OpenAI-compatible HTTP server that proxies to the local `claude` CLI.",
   "type": "module",
   "license": "MIT",
