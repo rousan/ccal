@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Errors from `claude` now come back as errors.** When the CLI failed (usage
+  limit reached, not logged in, unknown model) ccal answered `200` with empty
+  content, which a client cannot tell apart from a real, empty answer. ccal now
+  reads the `error` code and the `is_error` result that claude reports and
+  returns an OpenAI-style `{"error": {...}}` body: `503` for a reached usage
+  limit, a billing error or a logged-out CLI, the upstream `4xx` status when the
+  request itself was at fault (e.g. `404` for an unknown model), and `500` for
+  anything else, including a non-zero exit with no reported error. Streaming
+  requests that fail before any content get the same status and JSON body; a
+  failure after content has already streamed is sent as an in-band
+  `data: {"error": ...}` frame before `data: [DONE]`.
+
 ## [1.5.0] - 2026-09-08
 
 ### Added

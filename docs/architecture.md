@@ -218,6 +218,13 @@ twice. The event shapes handled:
   italic note describing the completed tool call, e.g.
   `\n\n*↳ Read src/server.ts*\n\n`.
 
+Two non-`event` lines are also read, to catch failures. When a request fails
+(usage limit, logged out, unknown model) claude streams no text; it emits a
+synthetic `assistant` message with a top-level `error` code (`rate_limit`,
+`billing_error`, `authentication_failed`, `model_not_found`, ...) and then a
+`result` line with `is_error: true`, a human-readable `result` and, when known,
+`api_error_status`. Both are recorded in `state.error` and return `null`.
+
 `toolLabel(name, inputJson)` renders those notes: `Read`/`Edit`/`Write` show the
 last path segments, `Bash` shows a truncated command, `Grep`/`Glob`/`WebSearch`
 show the pattern/query, `Task` shows the subagent description, and `mcp__*` tools
@@ -225,13 +232,26 @@ render as `<server> · <tool>`. Unknown tools fall back to a cleaned name.
 
 ### 6. Response back to the client (`server.ts`)
 
-- **Streaming (`stream: true`)** — the handler sets `text/event-stream` headers
+- **Streaming (`stream: true`)** — the handler first reads claude's output up
+  to the first piece of content. If claude finishes before producing any and
+  reported an error, it answers with a JSON error and a real status (see below)
+  instead of opening a stream. Otherwise it sets `text/event-stream` headers
   and, for each non-null `processLine` result, writes an OpenAI SSE chunk:
   `data: {"id","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":...}}]}\n\n`.
-  When claude's stdout closes, it reaps the child and writes `data: [DONE]\n\n`.
+  When claude's stdout closes, it reaps the child, writes an in-band
+  `data: {"error":{...}}\n\n` frame if the run failed after content was
+  already sent, and writes `data: [DONE]\n\n`.
 - **Non-streaming** — the handler accumulates all content into one string and
   returns a single `chat.completion` object with
   `choices[0].message.content`. If the spawn itself failed, it returns `502`.
+
+**Errors from claude** (`claudeFailure()`) are returned as
+`{"error":{"message","type":"claude_error","code"}}`, where `code` is claude's
+own error code. The status is `503` for `rate_limit`, `billing_error` and
+`authentication_failed` (the server cannot answer anyone until the usage window
+resets or the operator logs in), the upstream `4xx` status when claude reports
+one (e.g. `404` for an unknown model), and `500` otherwise, including a non-zero
+exit with no reported error.
 
 The completion `id` is `chatcmpl-<hrtime-nanoseconds>`. In both paths the child is
 reaped via `waitForExit()` so no zombie processes leak.
