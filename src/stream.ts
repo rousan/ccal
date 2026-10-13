@@ -17,15 +17,32 @@ interface ToolBlock {
   json: string;
 }
 
+// A failure claude reported about its own run. When the request itself fails
+// (usage limit reached, not logged in, unknown model, ...) claude does not
+// stream any text. It emits a synthetic `assistant` message carrying a
+// top-level `error` code, then a `result` line with `is_error: true` and a
+// human-readable `result`, and exits non-zero.
+export interface ClaudeError {
+  // claude's error code from the `assistant` line, e.g. "rate_limit",
+  // "billing_error", "authentication_failed", "model_not_found".
+  code: string | null;
+  // The human-readable message, e.g. "Not logged in · Please run /login".
+  message: string;
+  // The upstream API's HTTP status when claude reports one (`api_error_status`).
+  apiStatus: number | null;
+}
+
 // The running state threaded through process line calls for one response. It
-// holds the set of tool blocks currently open, keyed by content-block index.
+// holds the set of tool blocks currently open, keyed by content-block index,
+// and the error claude reported, if any.
 export interface StreamState {
   tools: Map<number, ToolBlock>;
+  error: ClaudeError | null;
 }
 
 // Create a fresh stream state for a new response.
 export function newStreamState(): StreamState {
-  return { tools: new Map() };
+  return { tools: new Map(), error: null };
 }
 
 // Process one stream-json line against the running state, returning any assistant
@@ -38,6 +55,8 @@ export function newStreamState(): StreamState {
 //   tool open:  event.type=content_block_start, content_block.type=tool_use (name,id)
 //   tool args:  event.type=content_block_delta, delta.type=input_json_delta, partial_json
 //   tool close: event.type=content_block_stop, index
+//   failure:    type=assistant with a top-level `error` code, then
+//               type=result with is_error=true, result, api_error_status
 export function processLine(line: string, state: StreamState): string | null {
   let parsed: unknown;
   try {
@@ -48,6 +67,33 @@ export function processLine(line: string, state: StreamState): string | null {
   }
 
   if (!isObject(parsed)) return null;
+
+  // Failure reporting. Neither line carries user-visible content; they only
+  // record the error so the server can answer with a proper status instead of
+  // an empty 200.
+  if (parsed.type === "assistant") {
+    const code = asString(parsed.error);
+    if (code !== null) {
+      state.error = {
+        code,
+        message: state.error?.message ?? assistantText(parsed.message) ?? code,
+        apiStatus: state.error?.apiStatus ?? null,
+      };
+    }
+    return null;
+  }
+  if (parsed.type === "result") {
+    if (parsed.is_error === true) {
+      state.error = {
+        code: state.error?.code ?? null,
+        message:
+          asString(parsed.result) ?? state.error?.message ?? "claude reported an error",
+        apiStatus: asNumber(parsed.api_error_status),
+      };
+    }
+    return null;
+  }
+
   const event = parsed.event;
   if (!isObject(event)) return null;
 
@@ -187,6 +233,15 @@ function lastSegments(path: string, n: number): string {
   }
   const start = Math.max(0, segments.length - n);
   return segments.slice(start).join("/");
+}
+
+// Join the text blocks of an `assistant` message snapshot, or null if it has none.
+function assistantText(message: unknown): string | null {
+  if (!isObject(message) || !Array.isArray(message.content)) return null;
+  const text = message.content
+    .map((block) => (isObject(block) ? asString(block.text) ?? "" : ""))
+    .join("");
+  return text.length > 0 ? text : null;
 }
 
 // Narrow an unknown value to a plain object with string keys.

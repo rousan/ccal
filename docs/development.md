@@ -87,6 +87,18 @@ You should see `data: {...}` SSE frames followed by `data: [DONE]`.
 > chat endpoint needs `claude` installed and logged in; if it can't be found you
 > get a `502` with a clear message.
 
+**Error paths:** a failing claude run must not come back as an empty `200`. An
+unknown model gives `404`, and a logged-out CLI gives `503`. To see the second
+without logging out, point claude at an empty config directory:
+
+```sh
+CLAUDE_CONFIG_DIR=$(mktemp -d) node dist/cli.js serve --port 8788
+curl -i http://127.0.0.1:8788/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{ "model": "haiku", "messages": [{ "role": "user", "content": "hi" }] }'
+# HTTP/1.1 503 ... {"error":{"message":"Not logged in · Please run /login",...}}
+```
+
 **Vanilla mode:** start the server with `--vanilla` and a request that would
 otherwise use a tool should instead get a plain-English answer with no tool
 activity:

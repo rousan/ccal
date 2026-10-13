@@ -11,7 +11,9 @@ import { resolveClaude } from "./claude-binary.js";
 import { listModels, DEFAULT_MODEL } from "./models.js";
 import { preparePrompt, type ChatMessage } from "./prompt.js";
 import { spawnClaude } from "./claude.js";
-import { newStreamState, processLine } from "./stream.js";
+import { newStreamState, processLine, type StreamState } from "./stream.js";
+import type { ChildProcess } from "node:child_process";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
 // The shape of an incoming /v1/chat/completions request body. We only read the
 // three fields the adapter cares about; everything else is ignored.
@@ -56,6 +58,56 @@ function sseChunk(id: string, text: string): string {
     choices: [{ index: 0, delta: { content: text } }],
   };
   return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+// claude error codes that mean this server cannot answer anyone until the
+// operator steps in or the usage window resets: the subscription's usage limit
+// is reached, the account is out of credit, or the CLI is not logged in. These
+// map to 503 so clients see an unavailable upstream rather than a bad request.
+const UNAVAILABLE_CODES = new Set(["rate_limit", "billing_error", "authentication_failed"]);
+
+// An error response to send instead of a chat completion.
+interface Failure {
+  status: ContentfulStatusCode;
+  body: { error: { message: string; type: string; code: string | null } };
+}
+
+// Decide whether a finished claude run failed, and how to report it. Before this
+// existed, every failure (usage limit, logged out, unknown model) came back as a
+// 200 with empty content, which clients cannot tell apart from a real answer.
+//
+// Status mapping:
+//   - usage limit / billing / auth codes          -> 503
+//   - any other error carrying a 4xx API status  -> that status (e.g. 404 for
+//     an unknown model), since the request itself was at fault
+//   - everything else, including a non-zero exit with no error reported -> 500
+function claudeFailure(state: StreamState, child: ChildProcess): Failure | null {
+  const err = state.error;
+  if (err !== null) {
+    let status: ContentfulStatusCode = 500;
+    if (err.code !== null && UNAVAILABLE_CODES.has(err.code)) {
+      status = 503;
+    } else if (err.apiStatus !== null && err.apiStatus >= 400 && err.apiStatus < 500) {
+      status = err.apiStatus as ContentfulStatusCode;
+    }
+    return {
+      status,
+      body: { error: { message: err.message, type: "claude_error", code: err.code } },
+    };
+  }
+  if (child.exitCode !== null && child.exitCode !== 0) {
+    return {
+      status: 500,
+      body: {
+        error: {
+          message: `claude exited with code ${child.exitCode}`,
+          type: "claude_error",
+          code: null,
+        },
+      },
+    };
+  }
+  return null;
 }
 
 // Construct the Hono app. The claude binary is resolved once per request (cheap,
@@ -172,15 +224,55 @@ export function createServer(config: AdapterConfig = {}): Hono {
 
     if (body.stream) {
       // Streaming path: translate claude's stream-json into OpenAI SSE chunks.
+      //
+      // Once the SSE response starts, its status is fixed at 200. A request that
+      // fails outright (usage limit, logged out) fails before claude produces
+      // any content, so read up to the first piece of content before committing
+      // to a stream: if claude finishes first and reports an error, answer with
+      // a plain JSON error and a real status code, exactly like the
+      // non-streaming path.
+      const state = newStreamState();
+      const lines = proc.lines[Symbol.asyncIterator]();
+      let first: string | null = null;
+      let finished = false;
+      try {
+        while (first === null) {
+          const next = await lines.next();
+          if (next.done) {
+            finished = true;
+            break;
+          }
+          first = processLine(next.value, state);
+        }
+      } catch {
+        // Read error before any content — treat the run as finished.
+        finished = true;
+      }
+
+      if (finished) {
+        await waitForExit(proc.child);
+        if (spawnFailed) {
+          return c.json({ error: { message: "Failed to launch claude" } }, 502);
+        }
+        const failure = claudeFailure(state, proc.child);
+        if (failure !== null) {
+          return c.json(failure.body, failure.status);
+        }
+      }
+
       c.header("Content-Type", "text/event-stream");
       c.header("Cache-Control", "no-cache");
       c.header("Connection", "keep-alive");
 
       return stream(c, async (streamApi) => {
-        const state = newStreamState();
+        if (first !== null) {
+          await streamApi.write(sseChunk(id, first));
+        }
         try {
-          for await (const line of proc.lines) {
-            const content = processLine(line, state);
+          while (!finished) {
+            const next = await lines.next();
+            if (next.done) break;
+            const content = processLine(next.value, state);
             if (content !== null) {
               await streamApi.write(sseChunk(id, content));
             }
@@ -190,6 +282,13 @@ export function createServer(config: AdapterConfig = {}): Hono {
         }
         // Reap the child so we do not leak a zombie process.
         await waitForExit(proc.child);
+        // A failure after content was already streamed can only be reported in
+        // band. OpenAI streams do the same: a `data:` frame holding an `error`
+        // object in place of a chunk.
+        const failure = claudeFailure(state, proc.child);
+        if (failure !== null) {
+          await streamApi.write(`data: ${JSON.stringify(failure.body)}\n\n`);
+        }
         await streamApi.write("data: [DONE]\n\n");
       });
     }
@@ -214,6 +313,11 @@ export function createServer(config: AdapterConfig = {}): Hono {
       return c.json({ error: { message: "Failed to launch claude" } }, 502);
     }
 
+    const failure = claudeFailure(state, proc.child);
+    if (failure !== null) {
+      return c.json(failure.body, failure.status);
+    }
+
     return c.json({
       id,
       object: "chat.completion",
@@ -232,7 +336,7 @@ export function createServer(config: AdapterConfig = {}): Hono {
 
 // Resolve once the child process has exited, so callers can reap it. Resolves
 // immediately if it has already exited.
-function waitForExit(child: import("node:child_process").ChildProcess): Promise<void> {
+function waitForExit(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) {
     return Promise.resolve();
   }
